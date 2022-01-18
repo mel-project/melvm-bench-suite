@@ -1,3 +1,5 @@
+all_mvm: mvm_add
+
 mvm_add:
 	time melorun ./melvm-benches/add.melo
 
