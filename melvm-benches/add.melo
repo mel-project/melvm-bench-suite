@@ -1,0 +1,11 @@
+let x = 0 :: Nat in
+let y = 0 :: Nat in
+let r0 = 0 :: Nat in
+let r = 0 :: Nat in
+
+loop 10000 do
+    set! r0 =
+    loop 10000 do
+        set! r = x + y;
+    done with 1;
+done with 1
