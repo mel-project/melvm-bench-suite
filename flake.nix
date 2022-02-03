@@ -35,10 +35,18 @@
             rustOverlay
           ];
         };
-        naersk-lib = naersk.lib."${system}";
+        rustChannel = pkgs.rustChannelOf {
+          channel = "1.58.0";
+          sha256 = "sha256-eQBpSmy9+oHfVyPs0Ea+GVZ0fvIatj6QVhNhYKOJ6Jk=";
+        };
+        naersk-lib = naersk.lib."${system}".override {
+          cargo = rustChannel.rust;
+          rustc = rustChannel.rust;
+        };
         melorun = naersk-lib.buildPackage {
           pname = "melorun";
           root = melorun-repo;
+          release = true;
         };
 
         in {
