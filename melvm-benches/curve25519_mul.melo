@@ -1,0 +1,203 @@
+struct U512 {
+    low: Nat,
+    high: Nat,
+}
+
+struct Point {
+    x: Nat,
+    y: Nat,
+}
+
+def to_u512(x: Nat) = U512 { low: x, high: 0 }
+
+def add_u512(x: U512, y: U512): U512 =
+    let low = x.low + y.low in
+    # If there was an overflow
+    let high =
+        if low < x.low then
+            x.high + y.high + 1
+        else
+            x.high + y.high in
+    U512 {
+        low: low,
+        high: high,
+    }
+
+def add_nat_to_u512(x: Nat, y: Nat): U512 =
+    let q = 2**255 - 19 in
+    let low = (x%q) + (y%q) in
+    # If there was an overflow
+    if low < x then
+        U512 { low: low, high: 1 }
+    else
+        U512 { low: low, high: 0 }
+
+def addq(x: Nat, y: Nat): Nat =
+    modq(add_nat_to_u512(x, y))
+
+# Uses 512 as intermediate repr and modq to produce a Nat
+def mulq(x: Nat, y: Nat): Nat =
+    let res = 0 :: Nat in
+    #let res = Point{ x: 0, y: 0 } in
+    #let y = modq(to_u512(y)) in
+    loop 256 do
+        set! res = if y & 1 then addq(res, x) else res;
+        #set! res = if y & 1 then add_u512(res, to_u512(x)) else res;
+        set! x = addq(x, x);
+        set! y = y >> 1;
+    #done with modq(res)
+    done with res
+
+def expq(base: Nat, exp: Nat): Nat =
+    let res = 1 :: Nat in
+    loop 256 do
+        set! res = if exp & 1 then
+                #mulq(res, mulq(base, base))
+                mulq(res, base)
+            else
+                res;
+                #mulq(res, base);
+        set! base = mulq(base, base);
+        set! exp = exp >> 1;
+    done with res
+
+def modq(x: U512): Nat =
+    let q = 2**255-19 in
+    let k = 2**256 % q in
+    (k * (x.high % q) % q) + (x.low % q)
+
+# Computes x^(p-2) which is the inverse according to Fermat's little theorem
+# a^-1 = a^(p-2) % p
+def inverse(x: Nat): Nat =
+    let c = x in
+    let i = 253 :: Nat in
+    # Loop 254 - 5, since bits at index 4 and 2 are 0, manually compute the rest
+    #let c1 = loop 249 do
+    let c1 = loop 254 do
+        #set! c = mulq(mulq(c, c), x);
+        set! c = mulq(c,c);
+        set! c = if !(i == 2) && !(i == 4) then mulq(c,x) else c;
+        set! i = i - 1;
+    done with c in
+    #let s5 = mulq(c1, c1) in
+    #let s4 = mulq(mulq(s5, s5), x) in
+    #let s3 = mulq(s4, s4) in
+    #let s2 = mulq(mulq(s3, s3), x) in
+    #let s1 = mulq(mulq(s2, s2), x) in
+    #s1
+    c1
+
+def subq(x: Nat, y: Nat): Nat =
+    let q = 2**255-19 in
+    if x < y then
+        #(y - x) % q
+        q - (y - x)
+    else
+        x - y
+    #let z = x - y in
+    #if z > x then z % q else z
+
+def scalar_mul(p: Nat, s: Nat): Nat =
+    # 0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8
+    let clamp_const1 = 57896044618658097711785492504343953926634992332820282019728792003956564819960 in
+    # 0x4000000000000000000000000000000000000000000000000000000000000000
+    let clamp_const2 = 28948022309329048855892746252171976963317496166410141009864396001978282409984 in
+    # i with constraints for security
+    let clamped = (s & clamp_const1) | clamp_const2 in
+    # Shifts right each iteration to get the lsb
+    let bit = 0 :: Nat in
+    let x = p in
+    let a = 1 :: Nat in
+    let b = x in
+    let c = 0 :: Nat in
+    let d = 1 :: Nat in
+    let e = 0 :: Nat in
+    let f = 0 :: Nat in
+    let i = 255 :: Nat in
+    let tmp_swap = a in
+    #let tmp = "" :: %[] in
+
+    loop 255 do
+        # Get lsb
+        set! i = i-1;
+        set! bit = ((clamped >> ((i >> 3) << 3) & 255) >> (i&7)) & 1;
+        # Shift for new lsb
+        # Swap a&b if bit
+        set! tmp_swap = a;
+        set! a = if bit then b else a;
+        set! b = if bit then tmp_swap else b;
+        # Swap c&d if bit
+        set! tmp_swap = c;
+        set! c = if bit then d else c;
+        set! d = if bit then tmp_swap else d;
+        # Maths
+        set! e = addq(a, c);
+        set! a = subq(a, c);
+        set! c = addq(b, d);
+        set! b = subq(b, d);
+        set! d = mulq(e, e);
+        set! f = mulq(a, a);
+        set! a = mulq(c, a);
+        set! c = mulq(b, e);
+        set! e = addq(a, c);
+        set! a = subq(a, c);
+        set! b = mulq(a, a);
+        set! c = subq(d, f);
+        set! a = mulq(c, 121665);
+        set! a = addq(a, d);
+        set! c = mulq(c, a);
+        set! a = mulq(d, f);
+        set! d = mulq(b, x);
+        set! b = mulq(e, e);
+        # Swap a&b if bit
+        set! tmp_swap = a;
+        set! a = if bit then b else a;
+        set! b = if bit then tmp_swap else b;
+        # Swap c&d if bit
+        set! tmp_swap = c;
+        set! c = if bit then d else c;
+        set! d = if bit then tmp_swap else d;
+    done with mulq(a, inverse(c))
+
+def generate<$x>(n: {$x}) =
+    #let g = Point { x: 9, y: 2687234 } in
+    let g = Point { x: 14847277145635483483963372537557091634710985132825781088887140890597596352251, y: 48981431527428949880507557032295310859754924433568441600873610210018059225738 } in
+    #let g = Point { x: 9, y: 14781619447589544791020593568409986887264606134616475288964881837755586237401 } in
+    let res = g in
+    loop $x do
+        set! res = add_point(res, g);
+    done with res
+
+
+def add_point(a: Point, b: Point) =
+    let const_a = 486662 in
+    let k_a = const_a * 2 in
+    # TODO handle if b = -a
+    if a.x == b.x then
+        Point {
+            #x: ((3*a.x*a.x + 2*const_a*a.x + 1) / (2*a.y))**2 - const_a - 2*a.x,
+            x: expq(addq(mulq(3,mulq(a.x, a.x)), addq(mulq(k_a, a.x), 1)) / mulq(2, a.y), 2) - const_a - mulq(2, a.x),
+            #y: (((2*a.x + b.x + const_a) * (3*a.x*a.x + 2*const_a*a.x+1)) / (2*a.y)) - ((3*a.x*a.x + 2*const_a*a.x + 1) / (2*a.y))**3 - a.y
+            y: mulq(addq(addq(mulq(2,a.x), b.x), const_a), addq(mulq(3,mulq(a.x,a.x)), addq(mulq(k_a,a.x), 1))) / mulq(2,a.y)
+                - expq(addq(mulq(3,mulq(a.x,a.x)), addq(mulq(k_a,a.x), 1)) / mulq(2,a.y), 3) - a.y,
+        }
+    else
+        Point {
+            #x: ((b.y - a.y) / (b.x - a.x))**2 - const_a - a.x - b.x,
+            x: expq((b.y - a.y) / (b.x - a.x), 2) - const_a - a.x - b.x,
+            #y: (((2*a.x + b.x + const_a) * (b.y - a.y)) / (b.x - a.x)) - ((b.y - a.y) / (b.x - a.x))**3 - a.y
+            y: mulq(addq(mulq(2, a.x), addq(b.x, const_a)), b.y - a.y) / (b.x - a.x) - expq((b.y - a.y) / (b.x - a.x), 3) - a.y
+        }
+
+# 2G
+#( 14847277145635483483963372537557091634710985132825781088887140890597596352251 , 48981431527428949880507557032295310859754924433568441600873610210018059225738 )
+
+
+---
+#let x2253  = 14474011154664524427946373126085988481658748083205070504932198000989141204992 in
+#let x22561 = 115792089237316195423570985008687907853269984665640564039457584007913129639935 in
+#mulq(x2253,x2253)
+#addq(2**255+1, 2**255)
+#scalar_mul(9, 1)
+scalar_mul(9, 123456789101112131415)
+#inverse(inverse(9))
